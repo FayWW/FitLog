@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Workout Tracker - 健身打卡记录</title>
+<link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<style>
+/* SECTION: CSS Variables and Reset */
+:root {
+  --primary: #FF6B9D;
+  --primary-light: #C471ED;
+  --gradient-main: linear-gradient(135deg, #FF6B9D 0%, #C471ED 100%);
+  --teal: #5CDEC0;
+  --dark: #2D3436;
+  --text: #2D3436;
+  --text-light: #A0A0A0;
+  --bg: #FFF6F0;
+  --card-bg: #ffffff;
+  --border: #F0E6FF;
+  --shadow: 0 4px 20px rgba(255,107,157,0.12);
+  --shadow-lg: 0 8px 32px rgba(196,113,237,0.15);
+  --radius: 20px;
+  --radius-sm: 14px;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans SC', 'Quicksand', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  padding-bottom: 80px;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; top: -120px; right: -80px;
+  width: 300px; height: 300px;
+  background: radial-gradient(circle, rgba(255,107,157,0.12) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none; z-index: 0;
+}
+body::after {
+  content: '';
+  position: fixed; bottom: -100px; left: -60px;
+  width: 260px; height: 260px;
+  background: radial-gradient(circle, rgba(105,180,255,0.1) 0%, transparent 70%);
+  border-radius: 50%; pointer-events: none; z-index: 0;
+}
+.container { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+
+/* SECTION: Layout and Header */
+.app-header {
+  background: var(--gradient-main);
+  color: #fff;
+  padding: 28px 0 20px;
+  text-align: center;
+  border-radius: 0 0 28px 28px;
+  box-shadow: 0 4px 20px rgba(255,107,157,0.25);
+  position: relative;
+}
+.app-header h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: 1px; }
+.app-header .subtitle { font-size: 0.85rem; opacity: 0.85; margin-top: 4px; font-family: 'Noto Sans SC', sans-serif; }
+
+/* SECTION: User Selector Bar */
+.user-bar {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  margin: 16px auto; max-width: 720px; padding: 0 16px;
+}
+.user-bar select {
+  padding: 8px 16px; border-radius: 20px; border: 2px solid var(--border);
+  font-family: 'Noto Sans SC', sans-serif; font-size: 0.85rem; font-weight: 600;
+  background: #fff; color: var(--text); cursor: pointer; outline: none;
+  min-width: 120px;
+}
+.user-bar select:focus { border-color: var(--primary); }
+.user-bar .add-user-btn {
+  padding: 8px 16px; border-radius: 20px; border: none;
+  background: var(--gradient-main); color: #fff; font-weight: 700;
+  font-size: 0.8rem; cursor: pointer; font-family: 'Noto Sans SC', sans-serif;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.user-bar .add-user-btn:hover { transform: scale(1.05); box-shadow: 0 2px 10px rgba(46,196,182,0.3); }
+
+/* SECTION: Stats Cards */
+.stats-row {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;
+  max-width: 720px; margin: 16px auto; padding: 0 16px;
+}
+.stat-card {
+  background: var(--card-bg); border-radius: var(--radius-sm); padding: 16px 10px;
+  text-align: center; box-shadow: var(--shadow); position: relative; overflow: hidden;
+}
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  background: var(--gradient-main);
+}
+.stat-card .stat-val { font-size: 1.5rem; font-weight: 700; color: var(--primary); }
+.stat-card .stat-label { font-size: 0.7rem; color: var(--text-light); margin-top: 4px; font-family: 'Noto Sans SC', sans-serif; }
+
+/* SECTION: Chart Section */
+.chart-container {
+  max-width: 720px; margin: 16px auto; padding: 0 16px;
+}
+.chart-box {
+  background: var(--card-bg); border-radius: var(--radius); padding: 16px;
+  box-shadow: var(--shadow);
+}
+.chart-filter { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.chart-filter select, .chart-filter label {
+  font-family: 'Noto Sans SC', sans-serif; font-size: 0.8rem;
+}
+.chart-filter select {
+  padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: #fff; outline: none;
+}
+.chart-tabs { display: flex; gap: 0; margin-bottom: 12px; }
+.chart-tabs button {
+  padding: 6px 16px; border: 2px solid var(--border); font-size: 0.72rem;
+  cursor: pointer; font-weight: 600; font-family: 'Noto Sans SC', sans-serif;
+  background: #fff; color: var(--text-light); transition: all 0.3s;
+}
+.chart-tabs button:first-child { border-radius: 10px 0 0 10px; }
+.chart-tabs button:last-child { border-radius: 0 10px 10px 0; border-left: none; }
+.chart-tabs button.active { background: var(--gradient-main); color: #fff; border-color: transparent; }
+.chart-canvas-wrap { position: relative; width: 100%; height: 260px; }
+.chart-canvas-wrap canvas { width: 100% !important; height: 100% !important; }
+
+/* SECTION: Toolbar and View Toggle */
+.toolbar {
+  display: flex; justify-content: center; gap: 10px;
+  max-width: 720px; margin: 16px auto; padding: 0 16px;
+}
+.toolbar button {
+  padding: 8px 18px; border-radius: 10px; border: none; font-size: 0.78rem;
+  font-weight: 600; cursor: pointer; font-family: 'Noto Sans SC', sans-serif;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.toolbar .btn-import { background: var(--gradient-main); color: #fff; }
+.toolbar .btn-export { background: #F5F0FF; color: var(--primary-light); border: 2px solid var(--border); }
+.toolbar button:hover { transform: translateY(-1px); box-shadow: var(--shadow); }
+.toolbar input[type=file] { display: none; }
+.view-toggle {
+  display: flex; justify-content: center; gap: 0; margin-bottom: 16px;
+}
+.view-toggle button {
+  padding: 6px 18px; border: 2px solid var(--border);
+  font-size: 0.72rem; cursor: pointer; font-weight: 600;
+  font-family: 'Noto Sans SC', sans-serif;
+  background: #fff; color: var(--text-light);
+  transition: all 0.3s;
+}
+.view-toggle button:first-child { border-radius: 12px 0 0 12px; }
+.view-toggle button:last-child { border-radius: 0 12px 12px 0; border-left: none; }
+.view-toggle button.active {
+  background: var(--gradient-main); color: #fff; border-color: transparent;
+}
+
+/* SECTION: Record Cards */
+.records-container { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+.card-list { display: flex; flex-direction: column; gap: 12px; }
+.record-card {
+  background: var(--card-bg); border-radius: var(--radius-sm); padding: 14px 16px;
+  box-shadow: var(--shadow); position: relative; transition: transform 0.2s;
+}
+.record-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lg); }
+.card-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.card-date { font-size: 0.82rem; color: var(--text-light); font-weight: 600; }
+.card-badge {
+  display: inline-block; padding: 3px 12px; border-radius: 12px;
+  color: #fff; font-size: 0.7rem; font-weight: 700; font-family: 'Noto Sans SC', sans-serif;
+}
+.card-mid { font-size: 0.82rem; color: var(--text); margin-bottom: 6px; font-family: 'Noto Sans SC', sans-serif; }
+.card-mid span { margin-right: 14px; }
+.card-bottom { display: flex; justify-content: space-between; align-items: center; }
+.card-hr { font-size: 0.78rem; color: var(--text-light); }
+.card-hr span { margin-right: 12px; }
+.card-actions { display: flex; gap: 8px; }
+.card-actions button {
+  background: none; border: none; cursor: pointer; font-size: 0.75rem;
+  font-weight: 600; font-family: 'Noto Sans SC', sans-serif;
+}
+.card-actions .btn-edit { color: var(--primary-light); }
+.card-actions .btn-del { color: #e74c3c; }
+
+/* SECTION: Table View */
+.table-wrap { overflow-x: auto; }
+.record-table {
+  width: 100%; border-collapse: collapse; font-size: 0.78rem;
+  background: var(--card-bg); border-radius: var(--radius-sm); overflow: hidden;
+  box-shadow: var(--shadow);
+}
+.record-table th {
+  background: var(--gradient-main); color: #fff; padding: 10px 8px;
+  font-family: 'Noto Sans SC', sans-serif; font-weight: 600; text-align: left;
+  white-space: nowrap;
+}
+.record-table td {
+  padding: 10px 8px; border-bottom: 1px solid #f0f0f0;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+.record-table tr:hover td { background: #FFF0F5; }
+.record-table .tbl-actions a {
+  cursor: pointer; margin-right: 8px; font-weight: 600; font-size: 0.75rem;
+  text-decoration: none;
+}
+.record-table .tbl-edit { color: var(--primary-light); }
+.record-table .tbl-del { color: #e74c3c; }
+
+/* SECTION: FAB and Modal */
+#fab-btn {
+  position: fixed; bottom: 28px; right: 28px; width: 56px; height: 56px;
+  border-radius: 50%; border: none; background: var(--gradient-main);
+  color: #fff; font-size: 2rem; font-weight: 300; cursor: pointer;
+  box-shadow: 0 4px 16px rgba(255,107,157,0.35); z-index: 100;
+  transition: transform 0.2s;
+  display: flex; align-items: center; justify-content: center;
+  line-height: 1;
+}
+#fab-btn:hover { transform: scale(1.1); }
+#modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 200; justify-content: center; align-items: center; padding: 16px;
+}
+#modal-overlay.show { display: flex; }
+.modal-box {
+  background: #fff; border-radius: var(--radius); width: 100%; max-width: 420px;
+  padding: 24px; box-shadow: var(--shadow-lg); max-height: 90vh; overflow-y: auto;
+}
+.modal-box h3 {
+  font-size: 1.1rem; font-weight: 700; margin-bottom: 16px; text-align: center;
+  font-family: 'Noto Sans SC', sans-serif;
+}
+.form-group { margin-bottom: 14px; }
+.form-group label {
+  display: block; font-size: 0.78rem; font-weight: 600; margin-bottom: 4px;
+  color: var(--text-light); font-family: 'Noto Sans SC', sans-serif;
+}
+.form-group input, .form-group select {
+  width: 100%; padding: 10px 12px; border: 2px solid var(--border);
+  border-radius: 10px; font-size: 0.85rem; outline: none;
+  font-family: 'Quicksand', 'Noto Sans SC', sans-serif;
+  transition: border-color 0.2s;
+}
+.form-group input:focus, .form-group select:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(255,107,157,0.12); }
+.modal-btns { display: flex; gap: 10px; margin-top: 18px; }
+.modal-btns button {
+  flex: 1; padding: 10px; border: none; border-radius: 10px; font-weight: 700;
+  font-size: 0.85rem; cursor: pointer; font-family: 'Noto Sans SC', sans-serif;
+  transition: transform 0.2s;
+}
+.modal-btns .btn-save { background: var(--gradient-main); color: #fff; }
+.modal-btns .btn-cancel { background: #F5F0FF; color: var(--primary-light); }
+
+/* SECTION: Responsive */
+@media (max-width: 480px) {
+  .stats-row { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat-card { padding: 12px 6px; }
+  .stat-card .stat-val { font-size: 1.2rem; }
+  .toolbar { flex-wrap: wrap; }
+  .chart-canvas-wrap { height: 220px; }
+  .record-table { font-size: 0.7rem; }
+}
+.empty-msg {
+  text-align: center; color: var(--text-light); padding: 40px 0;
+  font-family: 'Noto Sans SC', sans-serif; font-size: 0.9rem;
+}
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="app-header">
+  <h1>&#x1F3CB;&#xFE0F; Workout Tracker</h1>
+  <div class="subtitle">健身打卡记录</div>
+</div>
+
+<!-- User Selector -->
+<div class="user-bar">
+  <select id="user-select" onchange="switchUser(this.value)"></select>
+  <button class="add-user-btn" onclick="addUser()">+ 添加用户</button>
+</div>
+
+<!-- Stats -->
+<div class="stats-row" id="stats-row">
+  <div class="stat-card"><div class="stat-val" id="stat-count">0</div><div class="stat-label">本月打卡</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-cal">0</div><div class="stat-label">平均卡路里</div></div>
+  <div class="stat-card"><div class="stat-val" id="stat-hr">0</div><div class="stat-label">平均心率</div></div>
+</div>
+
+<!-- Charts -->
+<div class="chart-container">
+  <div class="chart-box">
+    <div class="chart-filter">
+      <label>筛选类型:</label>
+      <select id="chart-type-filter" onchange="updateCharts()">
+        <option value="ALL">全部</option>
+      </select>
+    </div>
+    <div class="chart-tabs">
+      <button class="active" onclick="switchChartTab(0, this)">心率趋势</button>
+      <button onclick="switchChartTab(1, this)">卡路里</button>
+    </div>
+    <div class="chart-canvas-wrap" id="chart-wrap-0"><canvas id="chart-hr"></canvas></div>
+    <div class="chart-canvas-wrap" id="chart-wrap-1" style="display:none;"><canvas id="chart-cal"></canvas></div>
+  </div>
+</div>
+
+<!-- Toolbar -->
+<div class="toolbar">
+  <button class="btn-import" onclick="document.getElementById('file-input').click()">&#128229; 导入 Excel</button>
+  <input type="file" id="file-input" accept=".xlsx,.xls" onchange="importExcel(event)">
+  <button class="btn-export" onclick="exportExcel()">&#128228; 导出 Excel</button>
+</div>
+
+<!-- View Toggle + Records -->
+<div class="records-container">
+  <div class="view-toggle" id="view-toggle">
+    <button class="active" onclick="setView('card', this)">卡片视图</button>
+    <button onclick="setView('table', this)">表格视图</button>
+  </div>
+  <div id="records-list"></div>
+</div>
+
+<!-- FAB -->
+<button id="fab-btn" onclick="openModal()">+</button>
+
+<!-- Modal -->
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal-box">
+    <h3 id="modal-title">添加记录</h3>
+    <div class="form-group"><label>日期</label><input type="date" id="f-date"></div>
+    <div class="form-group"><label>运动类型</label><select id="f-type"></select></div>
+    <div class="form-group"><label>教练</label><input type="text" id="f-instructor" placeholder="教练姓名"></div>
+    <div class="form-group"><label>卡路里 (可选)</label><input type="number" id="f-cal" placeholder="0" min="0"></div>
+    <div class="form-group"><label>平均心率</label><input type="number" id="f-avghr" placeholder="120" min="0" max="250"></div>
+    <div class="form-group"><label>最高心率</label><input type="number" id="f-maxhr" placeholder="160" min="0" max="250"></div>
+    <div class="modal-btns">
+      <button class="btn-cancel" onclick="closeModal()">取消</button>
+      <button class="btn-save" onclick="saveRecord()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// SECTION: Firebase Init and Config
+var FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCw2LvvJP4ySN7exYJ5tVCbN8fwcOA7KSM",
+  authDomain: "tools-61215.firebaseapp.com",
+  databaseURL: "https://tools-61215-default-rtdb.firebaseio.com",
+  projectId: "tools-61215",
+  storageBucket: "tools-61215.firebasestorage.app",
+  messagingSenderId: "417996402549",
+  appId: "1:417996402549:web:3246d8bef7a67be39fed3c"
+};
+firebase.initializeApp(FIREBASE_CONFIG);
+var db = firebase.database();
+
+// SECTION: Data Constants
+var WORKOUT_TYPES = [
+  '普拉提','慢跑','瑜伽','力量训练','HIIT','动感单车','游泳',
+  '拳击','舞蹈','爬山','跳绳','划船机','椭圆机','战绳','杠铃操',
+  '太极','攀岩','羽毛球','网球','篮球'
+];
+
+function typeColor(type){
+  var colors = {
+    '普拉提':'#FF6B9D','慢跑':'#5B8DEF','瑜伽':'#9B72CF','力量训练':'#EF6B6B',
+    'HIIT':'#FF6B35','动感单车':'#F7931E','游泳':'#69B4FF','拳击':'#E74C3C',
+    '舞蹈':'#C471ED','爬山':'#2D9F7F','跳绳':'#FFD93D','划船机':'#5CDEC0',
+    '椭圆机':'#82AEFC','战绳':'#FF9A56','杠铃操':'#667eea',
+    '太极':'#45C4A0','攀岩':'#d4940a','羽毛球':'#2EC4B6','网球':'#764ba2','篮球':'#E8A838'
+  };
+  return colors[type] || '#999';
+}
+
+// SECTION: Data Layer
+var currentUser = 'Fay';
+var cachedData = null;
+var userDbRef = null;
+var viewMode = 'card';
+var editingIndex = -1;
+
+function switchUser(username) {
+  currentUser = username;
+  cachedData = null;
+  if(userDbRef) userDbRef.off();
+  userDbRef = db.ref('fitness_records/' + username);
+  userDbRef.on('value', function(snapshot){
+    var val = snapshot.val();
+    if(val && Array.isArray(val)){
+      cachedData = val;
+    } else {
+      cachedData = [];
+    }
+    render();
+  });
+}
+
+function getData(){ return cachedData ? cachedData.slice() : []; }
+function saveData(data){
+  data.sort(function(a,b){ return b.date.localeCompare(a.date); });
+  cachedData = data.slice();
+  userDbRef.set(data);
+}
+
+// SECTION: User Management
+var usersList = ['Fay', 'Leo'];
+
+function loadUsers() {
+  db.ref('fitness_users').on('value', function(snap){
+    var val = snap.val();
+    if(val && Array.isArray(val)){
+      usersList = val;
+    } else {
+      usersList = ['Fay', 'Leo'];
+      db.ref('fitness_users').set(usersList);
+    }
+    renderUserSelect();
+  });
+}
+
+function renderUserSelect() {
+  var sel = document.getElementById('user-select');
+  sel.innerHTML = '';
+  usersList.forEach(function(u){
+    var opt = document.createElement('option');
+    opt.value = u; opt.textContent = u;
+    if(u === currentUser) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+function addUser() {
+  var name = prompt('请输入新用户名:');
+  if(!name || !name.trim()) return;
+  name = name.trim();
+  if(usersList.indexOf(name) >= 0){ alert('用户已存在'); return; }
+  usersList.push(name);
+  db.ref('fitness_users').set(usersList);
+  currentUser = name;
+  renderUserSelect();
+  switchUser(name);
+}
+
+// SECTION: Render Functions
+function render() {
+  renderStats();
+  updateCharts();
+  renderRecords();
+}
+
+function renderStats() {
+  var data = getData();
+  var now = new Date();
+  var ym = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+  var month = data.filter(function(r){ return r.date && r.date.substring(0,7) === ym; });
+  document.getElementById('stat-count').textContent = month.length;
+  var totalCal = 0, totalHR = 0, countCal = 0, countHR = 0;
+  month.forEach(function(r){
+    if(r.calories && r.calories > 0){ totalCal += r.calories; countCal++; }
+    if(r.avgHR && r.avgHR > 0){ totalHR += r.avgHR; countHR++; }
+  });
+  document.getElementById('stat-cal').textContent = countCal ? Math.round(totalCal/countCal) : 0;
+  document.getElementById('stat-hr').textContent = countHR ? Math.round(totalHR/countHR) : 0;
+}
+
+function setView(mode, btn) {
+  viewMode = mode;
+  var btns = document.querySelectorAll('.view-toggle button');
+  btns.forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+  renderRecords();
+}
+
+function renderRecords() {
+  var data = getData();
+  var container = document.getElementById('records-list');
+  if(!data || data.length === 0){
+    container.innerHTML = '<div class="empty-msg">暂无记录，点击 + 添加</div>';
+    return;
+  }
+  if(viewMode === 'card') {
+    renderCardView(data, container);
+  } else {
+    renderTableView(data, container);
+  }
+}
+
+function renderCardView(data, container) {
+  var html = '<div class="card-list">';
+  data.forEach(function(r, i){
+    html += '<div class="record-card">';
+    html += '<div class="card-top">';
+    html += '<span class="card-date">' + escH(r.date) + '</span>';
+    html += '<span class="card-badge" style="background:' + typeColor(r.type) + '">' + escH(r.type) + '</span>';
+    html += '</div>';
+    html += '<div class="card-mid">';
+    html += '<span>&#x1F9D1;&#x200D;&#x1F3EB; ' + escH(r.instructor || '-') + '</span>';
+    if(r.calories && r.calories > 0) html += '<span>&#x1F525; ' + r.calories + ' kcal</span>';
+    html += '</div>';
+    html += '<div class="card-bottom">';
+    html += '<div class="card-hr">';
+    html += '<span>&#x2764;&#xFE0F; 均 ' + (r.avgHR||0) + '</span>';
+    html += '<span>&#x1F4A5; 峰 ' + (r.maxHR||0) + '</span>';
+    html += '</div>';
+    html += '<div class="card-actions">';
+    html += '<button class="btn-edit" onclick="editRecord(' + i + ')">编辑</button>';
+    html += '<button class="btn-del" onclick="deleteRecord(' + i + ')">删除</button>';
+    html += '</div></div></div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+}
+
+function renderTableView(data, container) {
+  var html = '<div class="table-wrap"><table class="record-table">';
+  html += '<thead><tr><th>日期</th><th>类型</th><th>教练</th><th>卡路里</th><th>平均心率</th><th>最高心率</th><th>操作</th></tr></thead>';
+  html += '<tbody>';
+  data.forEach(function(r, i){
+    html += '<tr>';
+    html += '<td>' + escH(r.date) + '</td>';
+    html += '<td><span class="card-badge" style="background:' + typeColor(r.type) + ';font-size:0.68rem;padding:2px 8px">' + escH(r.type) + '</span></td>';
+    html += '<td>' + escH(r.instructor || '-') + '</td>';
+    html += '<td>' + (r.calories||0) + '</td>';
+    html += '<td>' + (r.avgHR||0) + '</td>';
+    html += '<td>' + (r.maxHR||0) + '</td>';
+    html += '<td class="tbl-actions"><a class="tbl-edit" onclick="editRecord(' + i + ')">编辑</a><a class="tbl-del" onclick="deleteRecord(' + i + ')">删除</a></td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table></div>';
+  container.innerHTML = html;
+}
+
+function escH(s){ var d=document.createElement('div'); d.textContent=s||''; return d.innerHTML; }
+
+// SECTION: Chart Functions
+var chartHR = null, chartCal = null;
+
+function populateChartFilter() {
+  var sel = document.getElementById('chart-type-filter');
+  sel.innerHTML = '<option value="ALL">全部</option>';
+  WORKOUT_TYPES.forEach(function(t){
+    sel.innerHTML += '<option value="' + t + '">' + t + '</option>';
+  });
+}
+
+function switchChartTab(idx, btn) {
+  document.getElementById('chart-wrap-0').style.display = idx===0?'block':'none';
+  document.getElementById('chart-wrap-1').style.display = idx===1?'block':'none';
+  var btns = document.querySelectorAll('.chart-tabs button');
+  btns.forEach(function(b){ b.classList.remove('active'); });
+  btn.classList.add('active');
+}
+
+function updateCharts() {
+  var data = getData();
+  var filterType = document.getElementById('chart-type-filter').value;
+  var filtered = data.filter(function(r){
+    return filterType === 'ALL' || r.type === filterType;
+  });
+  filtered.sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+  var labels = filtered.map(function(r){ return r.date.substring(5); });
+  var avgHRs = filtered.map(function(r){ return r.avgHR || 0; });
+  var maxHRs = filtered.map(function(r){ return r.maxHR || 0; });
+  var cals = filtered.map(function(r){ return r.calories || 0; });
+
+  if(chartHR) chartHR.destroy();
+  var ctx1 = document.getElementById('chart-hr').getContext('2d');
+  chartHR = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: '平均心率', data: avgHRs, borderColor: '#FF6B35', backgroundColor: 'rgba(255,107,53,0.1)', tension: 0.3, fill: true, pointRadius: 3 },
+        { label: '最高心率', data: maxHRs, borderColor: '#E74C3C', backgroundColor: 'rgba(231,76,60,0.08)', tension: 0.3, fill: true, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { beginAtZero: false } }
+    }
+  });
+
+  if(chartCal) chartCal.destroy();
+  var ctx2 = document.getElementById('chart-cal').getContext('2d');
+  chartCal = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        { label: '卡路里', data: cals, backgroundColor: 'rgba(247,147,30,0.7)', borderColor: '#F7931E', borderWidth: 1, borderRadius: 4 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: 'bottom', labels: { font: { size: 11 } } } },
+      scales: { y: { beginAtZero: true } }
+    }
+  });
+}
+
+// SECTION: Modal and CRUD
+function populateTypeSelect() {
+  var sel = document.getElementById('f-type');
+  sel.innerHTML = '';
+  WORKOUT_TYPES.forEach(function(t){
+    sel.innerHTML += '<option value="' + t + '">' + t + '</option>';
+  });
+}
+
+function openModal(idx) {
+  editingIndex = (typeof idx === 'number') ? idx : -1;
+  var overlay = document.getElementById('modal-overlay');
+  document.getElementById('modal-title').textContent = editingIndex >= 0 ? '编辑记录' : '添加记录';
+  if(editingIndex >= 0) {
+    var r = getData()[editingIndex];
+    document.getElementById('f-date').value = r.date;
+    document.getElementById('f-type').value = r.type;
+    document.getElementById('f-instructor').value = r.instructor || '';
+    document.getElementById('f-cal').value = r.calories || '';
+    document.getElementById('f-avghr').value = r.avgHR || '';
+    document.getElementById('f-maxhr').value = r.maxHR || '';
+  } else {
+    document.getElementById('f-date').value = new Date().toISOString().substring(0,10);
+    document.getElementById('f-type').value = WORKOUT_TYPES[0];
+    document.getElementById('f-instructor').value = '';
+    document.getElementById('f-cal').value = '';
+    document.getElementById('f-avghr').value = '';
+    document.getElementById('f-maxhr').value = '';
+  }
+  overlay.classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('show');
+  editingIndex = -1;
+}
+
+function saveRecord() {
+  var date = document.getElementById('f-date').value;
+  var type = document.getElementById('f-type').value;
+  var instructor = document.getElementById('f-instructor').value.trim();
+  var cal = parseInt(document.getElementById('f-cal').value) || 0;
+  var avghr = parseInt(document.getElementById('f-avghr').value) || 0;
+  var maxhr = parseInt(document.getElementById('f-maxhr').value) || 0;
+  if(!date || !type) { alert('请填写日期和运动类型'); return; }
+  var rec = { date: date, type: type, instructor: instructor, calories: cal, avgHR: avghr, maxHR: maxhr };
+  var data = getData();
+  if(editingIndex >= 0) {
+    data[editingIndex] = rec;
+  } else {
+    data.push(rec);
+  }
+  saveData(data);
+  closeModal();
+}
+
+function editRecord(i) { openModal(i); }
+
+function deleteRecord(i) {
+  if(!confirm('确定删除此记录？')) return;
+  var data = getData();
+  data.splice(i, 1);
+  saveData(data);
+}
+
+// SECTION: Import/Export
+function importExcel(event) {
+  var file = event.target.files[0];
+  if(!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      var wb = XLSX.read(e.target.result, { type: 'array' });
+      var ws = wb.Sheets[wb.SheetNames[0]];
+      var rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+      if(rows.length < 2) { alert('文件为空'); return; }
+      var header = rows[0];
+      var colMap = {};
+      var mapping = {'日期':'date','类型':'type','教练':'instructor','卡路里':'calories','平均心率':'avgHR','最高心率':'maxHR'};
+      header.forEach(function(h, idx){
+        var key = mapping[String(h).trim()];
+        if(key) colMap[key] = idx;
+      });
+      var imported = [];
+      for(var i = 1; i < rows.length; i++){
+        var row = rows[i];
+        if(!row || row.length === 0) continue;
+        var dateVal = colMap.date !== undefined ? row[colMap.date] : '';
+        if(typeof dateVal === 'number') {
+          var dt = XLSX.SSF.parse_date_code(dateVal);
+          dateVal = dt.y + '-' + String(dt.m).padStart(2,'0') + '-' + String(dt.d).padStart(2,'0');
+        }
+        if(!dateVal) continue;
+        imported.push({
+          date: String(dateVal).substring(0,10),
+          type: colMap.type !== undefined ? String(row[colMap.type]||'') : '',
+          instructor: colMap.instructor !== undefined ? String(row[colMap.instructor]||'') : '',
+          calories: colMap.calories !== undefined ? parseInt(row[colMap.calories])||0 : 0,
+          avgHR: colMap.avgHR !== undefined ? parseInt(row[colMap.avgHR])||0 : 0,
+          maxHR: colMap.maxHR !== undefined ? parseInt(row[colMap.maxHR])||0 : 0
+        });
+      }
+      if(imported.length === 0) { alert('未找到有效数据'); return; }
+      var data = getData().concat(imported);
+      saveData(data);
+      alert('成功导入 ' + imported.length + ' 条记录');
+    } catch(err) { alert('导入失败: ' + err.message); }
+    event.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function exportExcel() {
+  var data = getData();
+  if(data.length === 0) { alert('暂无数据可导出'); return; }
+  var rows = [['日期','类型','教练','卡路里','平均心率','最高心率']];
+  data.forEach(function(r){
+    rows.push([r.date, r.type, r.instructor||'', r.calories||0, r.avgHR||0, r.maxHR||0]);
+  });
+  var ws = XLSX.utils.aoa_to_sheet(rows);
+  var wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Fitness');
+  var today = new Date().toISOString().substring(0,10);
+  XLSX.writeFile(wb, 'Fitness_Log_' + currentUser + '_' + today + '.xlsx');
+}
+
+// SECTION: Init
+populateTypeSelect();
+populateChartFilter();
+loadUsers();
+switchUser(currentUser);
+</script>
+<script defer src="https://static.cloudflareinsights.com/beacon.min.js/v833ccba57c9e4d2798f2e76cebdd09a11778172276447" integrity="sha512-57MDmcccJXYtNnH+ZiBwzC4jb2rvgVCEokYN+L/nLlmO8rfYT/gIpW2A569iJ/3b+0UEasghjuZH/ma3wIs/EQ==" data-cf-beacon='{"version":"2024.11.0","token":"75124c326cb447fe934cde04713ae013","r":1,"server_timing":{"name":{"cfCacheStatus":true,"cfEdge":true,"cfExtPri":true,"cfL4":true,"cfOrigin":true,"cfSpeedBrain":true},"location_startswith":null}}' crossorigin="anonymous"></script>
+</body>
+</html>
